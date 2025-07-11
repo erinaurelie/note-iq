@@ -14,7 +14,7 @@ const Navbar = () => {
             href='/'
             className='flex z-40 font-semibold'
           >
-            <span>quill.</span>
+            <span>NoteIQ.</span>
           </Link>
 
           {/* todo: add mobile navbar */}
