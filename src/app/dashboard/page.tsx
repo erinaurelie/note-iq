@@ -1,25 +1,26 @@
+import { db } from '@/db';
 import { getKindeServerSession } from '@kinde-oss/kinde-auth-nextjs/server'
 import { redirect } from 'next/navigation';
+import Dashboard from '@/components/Dashboard';
 
-const Page = () => {
+const Page = async () => {
   // current user logged in 
   const { getUser } = getKindeServerSession();
-  const user = getUser();
+  const user = await getUser();
 
   // passing a query to then send the user back where they where to not disrupt their flow.
   if(!user || !user.id) redirect('/auth-callback?origin=dashboard');
 
-  return (
-    <div>P</div>
-  )
+  const dbUser = await db.user.findFirst({
+    where: {
+      id: user.id
+    }
+  });
+
+  if (!dbUser) redirect('/auth-callback?origin=dashboard');
+
+  return <Dashboard />
 }
 
 export default Page
 
-// user logs in
-  // are they already in the db
-    // they can continue to use services
-  // if they are not we sync user to db  (in the auth-callback page)
-    // then they can proceed to the dashboard to use services
-
-// this entier process is called eventual consistency: user not direnctly added to db but often though a webhook
