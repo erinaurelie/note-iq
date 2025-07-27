@@ -6,7 +6,7 @@ import { db } from '@/db';
 
 const f = createUploadthing();
 
-// const auth = (req: Request) => ({ id: 'fakeId' });
+
 
 export const ourFileRouter = {
   pdfUploader: f({
@@ -33,7 +33,7 @@ export const ourFileRouter = {
             uploadStatus: 'PROCESSING',
           },
         });
-        console.log('onUploadComplete: db write success', createdFile);
+        
         return { uploadedBy: metadata.userId };
       } catch (err) {
         console.error('onUploadComplete error', err);
