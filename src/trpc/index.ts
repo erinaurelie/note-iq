@@ -76,7 +76,7 @@ export const appRouter = router({
         key: input.key,
         userId
       }
-    })
+    });
 
     if (!file) throw new TRPCError({ code: 'NOT_FOUND' });
 

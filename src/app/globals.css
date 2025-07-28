@@ -1,7 +1,8 @@
 @import "tailwindcss";
 @plugin 'tailwindcss-animate';
 @plugin '@tailwindcss/typography';
-
+@import "uploadthing/tw/v4";
+@source "../node_modules/@uploadthing/dist";
 
 :root {
   --radius: 0.65rem;

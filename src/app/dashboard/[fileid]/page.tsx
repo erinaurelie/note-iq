@@ -3,7 +3,7 @@ import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import { notFound, redirect } from "next/navigation";
 import PdfWrapper from "@/components/PdfWrapper";
 import ChatWrapper from "@/components/ChatWrapper";
-import PdfRenderer from "@/components/PdfRenderer";
+
 
 
 interface PageProps {
@@ -11,6 +11,7 @@ interface PageProps {
     fileid: string // needs to be the same name as folder
   }
 }
+
 
 
 const Page = async ({ params }: PageProps) => {
@@ -39,7 +40,7 @@ const Page = async ({ params }: PageProps) => {
         <div className='flex-1 xl:flex'>
           <div className='px-4 py-6 sm:px-6 lg:pl-8 xl:flex-1 xl:pl-6'>
             {/* Main area */}
-            <PdfRenderer url={file.url} />
+            <PdfWrapper url={file.url} />
           </div>
         </div>
 
