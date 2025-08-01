@@ -40,6 +40,7 @@
     "react-loading-skeleton": "^3.5.0",
     "react-pdf": "^10.0.1",
     "react-resize-detector": "^12.1.0",
+    "react-textarea-autosize": "^8.5.9",
     "server-only": "^0.0.1",
     "simplebar-react": "^3.3.2",
     "sonner": "^2.0.6",

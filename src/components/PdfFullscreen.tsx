@@ -15,6 +15,7 @@ interface PdfFullscreenProps {
   fileUrl: string
 }
 
+
 const PdfFullscreen = ({ fileUrl }: PdfFullscreenProps) => {
   const [isOpen, setIsOpen] = useState(false)
   const [numPages, setNumPages] = useState<number>()
