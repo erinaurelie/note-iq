@@ -24,6 +24,7 @@ interface Props {
   children: ReactNode
 }
 
+// can access and use the chat input state and send messages, without having to manage these details itself.
 
 export const ChatContextProvider = ({ fileId, children }: Props) => {
   const [message, setMessage] = useState<string>('');
