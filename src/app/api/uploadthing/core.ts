@@ -8,17 +8,11 @@ import { UploadThingError } from 'uploadthing/server';
 import { db } from '@/db';
 
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
-import { OpenAIEmbeddings } from "@langchain/openai";
-
-
 import { getPineconeClient } from '@/lib/pinecone';
 import { PineconeStore } from "@langchain/pinecone";
-
-
-
+import { deepseekEmbeddings } from '@/lib/embeddings';
 
 const f = createUploadthing();
-
 
 export const ourFileRouter = {
   pdfUploader: f({
@@ -54,16 +48,13 @@ export const ourFileRouter = {
           const pageLevelDocs = await loader.load();
           const pagesAmout = pageLevelDocs.length;
 
-          // vectorize and index entire document
+          // vectorize and index entire document using DeepSeek embeddings
           const pinecone = await getPineconeClient()
           const pineconeIndex = pinecone.Index('note-iq');
-          const embeddings = new OpenAIEmbeddings({
-            openAIApiKey: process.env.OPENAI_API_KEY
-          });
 
           await PineconeStore.fromDocuments(
             pageLevelDocs,
-            embeddings,
+            deepseekEmbeddings,
             {
               pineconeIndex,
               namespace: createdFile.id // all the vectors for that file

@@ -3,31 +3,35 @@ import { SendMessageValidator } from "@/lib/SendMessageValidator";
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import { NextRequest } from "next/server";
 
-import { OpenAIEmbeddings } from "@langchain/openai";
 import { PineconeStore } from "@langchain/pinecone";
 import { getPineconeClient } from '@/lib/pinecone';
-import { openai } from "@/lib/openai";
+import { deepseekClient } from "@/lib/deepseek";
+import { deepseekEmbeddings } from "@/lib/embeddings";
 
-import { streamText } from "ai";
-import { openai as openAI} from "@ai-sdk/openai"
-
-
-export const PORT = async (req: NextRequest) => {
+export const POST = async (req: NextRequest) => {
   // endpoint for asking a question to a pdf file
   const body = await req.json();
 
   const { getUser } = getKindeServerSession();
-  const user = getUser();
+  const user = await getUser();
 
-  const { id: userId } = user;
+  const { id: userId } = user!;
 
   if (!userId) 
     return new Response('Unauthorized', {
     status: 401
-    });
+  });
 
   // when making a request to this endpoint we expect this Schema
-  const { fileId, message } = SendMessageValidator.parse(body);
+  let fileId: string, message: string;
+  
+
+  try {
+    ({ fileId, message } = SendMessageValidator.parse(body));
+  } catch (error) {
+    return new Response('Invalid request', { status: 400 });
+  }
+
 
   const file = await db.file.findFirst({
     where: {
@@ -36,7 +40,8 @@ export const PORT = async (req: NextRequest) => {
     }
   })
 
-  if (!file) 
+  
+  if (!file)
     return new Response('Not found', {
       status: 404
     });
@@ -54,11 +59,9 @@ export const PORT = async (req: NextRequest) => {
   // which page of the pdf is most relevant to the question asked retrieve that page for context and send it
   const pinecone = await getPineconeClient()
   const pineconeIndex = pinecone.Index('note-iq');
-  const embeddings = new OpenAIEmbeddings({
-    openAIApiKey: process.env.OPENAI_API_KEY
-  });
-
-  const vectorStore = await PineconeStore.fromExistingIndex(embeddings, {
+  
+  // Use DeepSeek embeddings instead of OpenAI
+  const vectorStore = await PineconeStore.fromExistingIndex(deepseekEmbeddings, {
     pineconeIndex,
     namespace: file.id
   })
@@ -81,63 +84,109 @@ export const PORT = async (req: NextRequest) => {
     content: msg.text
   }));
 
-  const response =  await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
-    temperature: 0,
-    stream: true,
-    messages: [
-      {
-        role: 'system',
-        content:
-          'Use the following pieces of context (or previous conversaton if needed) to answer the users question in markdown format.',
-      },
-      {
-        role: 'user',
-        content: `Use the following pieces of context (or previous conversaton if needed) to answer the users question in markdown format. \nIf you don't know the answer, just say that you don't know, don't try to make up an answer.
-        
-        \n----------------\n
-        
-        PREVIOUS CONVERSATION:
-        ${formattedPrevMessages.map((message) => {
-          if (message.role === 'user') return `User: ${message.content}\n`
-          return `Assistant: ${message.content}\n`
-        })}
-        
-        \n----------------\n
-        
-        CONTEXT:
-        ${results.map((r) => r.pageContent).join('\n\n')}
-        
-        USER INPUT: ${message}`,
-      },
-    ],
-  })
-
-  const stream = await streamText({
-    model: openAI('gpt-4o'),
-    async onFinish(completion) {
-      await db.message.create({
-        data: {
-          text: completion,
-          isUserMessage: false,
-          fileId,
-          userId,
-        },
-      }); 
-    }
-  })
-
-  return stream.toDataStreamResponse();
   
+  try {
+    const response = await deepseekClient.createChatCompletion({
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Use the following pieces of context (or previous conversation if needed) to answer the users question in markdown format.',
+        },
+        {
+          role: 'user',
+          content: `Use the following pieces of context (or previous conversation if needed) to answer the users question in markdown format. \nIf you don't know the answer, just say that you don't know, don't try to make up an answer.
+          
+          \n----------------\n
+          
+          PREVIOUS CONVERSATION:
+          ${formattedPrevMessages.map((message) => {
+            if (message.role === 'user') return `User: ${message.content}\n`
+            return `Assistant: ${message.content}\n`
+          })}
+          
+          \n----------------\n
+          
+          CONTEXT:
+          ${results.map((r) => r.pageContent).join('\n\n')}
+          
+          USER INPUT: ${message}`,
+        },
+      ],
+      stream: true,
+    });
+
+    // Create a readable stream from the DeepSeek response
+    const stream = new ReadableStream({
+      async start(controller) {
+        let fullResponse = '';
+        
+        const reader = response.getReader();
+        const decoder = new TextDecoder();
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+            
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6);
+                if (data === '[DONE]') continue;
+                
+                try {
+                  const parsed = JSON.parse(data);
+                  const content = parsed.choices[0]?.delta?.content || '';
+                  if (content) {
+                    fullResponse += content;
+                    controller.enqueue(new TextEncoder().encode(content));
+                  }
+                } catch (e) {
+                  // Skip malformed JSON
+                }
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+        
+        // Save the complete response to the database
+        await db.message.create({
+          data: {
+            text: fullResponse,
+            isUserMessage: false,
+            fileId,
+            userId: user!.id,
+          },
+        });
+        
+        controller.close();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Transfer-Encoding': 'chunked',
+      },
+    });
+  } catch (error) {
+    console.error('DeepSeek API error:', error);
+    
+    // Save error message to database
+    await db.message.create({
+      data: {
+        text: "I'm sorry, I encountered an error while processing your request. Please try again.",
+        isUserMessage: false,
+        fileId,
+        userId: user!.id,
+      },
+    });
+    
+    return new Response('AI service temporarily unavailable', { status: 503 });
+  }
 }
-
-/*
-  Using an LLM every text like "the dog is brown" can be turned into a vector i.e. a JS array of 1536 numbers. You can see how similar sentences using their vectors. That is called semantic query. We are going to index the entire PDF first and then based on the question we can find the parts of the PDF in the text that are most relevant to that question. 
-
-  We can calculate that mathematically using the *consine similarity*
-
-  We are indexing the PDF using a vector db there are many we'll be using Pinecone. there create an index which just stores a bunch of vectors
-
-  and OpenAI for the embedings
-
-*/

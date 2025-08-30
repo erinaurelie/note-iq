@@ -111,7 +111,7 @@ const PdfRenderer = ({ url }: { url: string }) => {
               currentPage == numPages
             }
             onClick={prev => {
-              setCurrentPage(prev => prev + 1 >         numPages! ? numPages! : prev + 1
+              setCurrentPage(prev => prev + 1 > numPages! ? numPages! : prev + 1
               )
 
               setValue("page", String(currentPage + 1))

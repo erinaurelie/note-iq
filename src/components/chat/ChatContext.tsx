@@ -3,7 +3,6 @@ import React, { createContext, ReactNode } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-
 type StreamResponse = {
   addMessage: () => void,
   message: string,
@@ -18,40 +17,73 @@ export const ChatContext = createContext<StreamResponse>({
   isLoading: false
 });
 
-
 interface Props {
   fileId: string,
   children: ReactNode
 }
 
-// can access and use the chat input state and send messages, without having to manage these details itself.
-
 export const ChatContextProvider = ({ fileId, children }: Props) => {
   const [message, setMessage] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
-
   const { mutate: sendMessage } = useMutation({
     mutationFn: async ({ message }: { message: string }) => {
-      const response = await fetch('/api/message', {
-        method: 'POST',
-        body: JSON.stringify({
-          fileId,
-          message,
-        })
-      })
+      setIsLoading(true);
+      try {
+        const response = await fetch('/api/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fileId,
+            message,
+          })
+        });
 
-      if (!response.ok) throw new Error('Failed to send message');
+        if (!response.ok) {
+          throw new Error('Failed to send message');
+        }
 
-      return response.body;
+        // Handle the streaming response
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('No response body');
+        }
+
+        let result = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = new TextDecoder().decode(value);
+          result += chunk;
+        }
+
+        return result;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    onError: (error) => {
+      toast.error('Failed to send message');
+      console.error('Chat error:', error);
+      setIsLoading(false);
+    },
+    onSuccess: () => {
+      setMessage('');
     }
-  })
+  });
 
+  const addMessage = () => {
+    if (message.trim() && !isLoading) {
+      sendMessage({ message });
+    }
+  };
 
-  const addMessage = () => sendMessage({ message });
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMessage(e.target.value);
-  }
+  };
 
   return (
     <ChatContext.Provider
